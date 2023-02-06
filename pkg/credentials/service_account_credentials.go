@@ -32,8 +32,10 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/kserve/kserve/pkg/credentials/azure"
+	"github.com/kserve/kserve/pkg/credentials/databricks"
 	"github.com/kserve/kserve/pkg/credentials/gcs"
 	"github.com/kserve/kserve/pkg/credentials/hdfs"
+	"github.com/kserve/kserve/pkg/credentials/mlflow"
 	"github.com/kserve/kserve/pkg/credentials/s3"
 	"github.com/kserve/kserve/pkg/utils"
 )
@@ -249,8 +251,19 @@ func (c *CredentialBuilder) CreateSecretVolumeAndEnv(namespace string, serviceAc
 			volume, volumeMount := hdfs.BuildSecret(secret)
 			*volumes = utils.AppendVolumeIfNotExists(*volumes, volume)
 			container.VolumeMounts = append(container.VolumeMounts, volumeMount)
-		} else {
-			log.V(5).Info("Skipping non gcs/s3/azure secret", "Secret", secret.Name)
+		} else if _, ok := secret.Data[mlflow.TrackingURI]; !ok {
+			log.V(5).Info("Skipping non gcs/s3/azure/mlflow/databricks secret", "Secret", secret.Name)
+		}
+		if mlflowTrackingURI, ok := secret.Data[mlflow.TrackingURI]; ok {
+			if string(mlflowTrackingURI) == databricks.MLflowTrackingURI {
+				log.Info("Setting secret envs for databricks", "DatabricksSecret", secret.Name)
+				envs := databricks.BuildSecretEnvs(secret)
+				container.Env = append(container.Env, envs...)
+			} else {
+				log.Info("Setting secret envs for mlflow", "MLflowSecret", secret.Name)
+				envs := mlflow.BuildSecretEnvs(secret)
+				container.Env = append(container.Env, envs...)
+			}
 		}
 	}
 
