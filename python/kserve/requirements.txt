@@ -26,4 +26,5 @@ httpx>=0.23.0
 fastapi>=0.85.0,<=0.88.0
 uvicorn>=0.16.0
 timing_asgi>=0.3.0
+mlflow>=2,<3
 

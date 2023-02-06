@@ -38,6 +38,9 @@ import boto3
 from google.auth import exceptions
 from google.cloud import storage
 
+from mlflow.store.artifact.artifact_repository_registry import get_artifact_repository
+from mlflow.tracking.artifact_utils import _download_artifact_from_uri
+
 from .model_repository import MODEL_MOUNT_DIRS
 
 _GCS_PREFIX = "gs://"
@@ -51,6 +54,9 @@ _URI_RE = "https?://(.+)/(.+)"
 _HTTP_PREFIX = "http(s)://"
 _HEADERS_SUFFIX = "-headers"
 _PVC_PREFIX = "/mnt/pvc"
+_DBFS_PREFIX = "dbfs:/"
+_MODELS_PREFIX = "models:/"
+_RUNS_PREFIX = "runs:/"
 
 _HDFS_SECRET_DIRECTORY = "/var/secrets/kserve-hdfscreds"
 _HDFS_FILE_SECRETS = ["KERBEROS_KEYTAB", "TLS_CERT", "TLS_KEY", "TLS_CA"]
@@ -95,10 +101,20 @@ class Storage(object):  # pylint: disable=too-few-public-methods
             # Don't need to download models if this InferenceService is running in the multi-model
             # serving mode. The model agent will download models.
             return out_dir
+        elif uri.startswith(_DBFS_PREFIX):
+            Storage._download_mlflow(uri, out_dir)
+        elif uri.startswith(_MODELS_PREFIX):
+            uri = get_artifact_repository(uri).get_underlying_uri(uri)
+            Storage._download_mlflow(uri, out_dir)
+        elif uri.startswith(_RUNS_PREFIX):
+            uri = get_artifact_repository(uri).get_underlying_uri(uri)
+            Storage._download_mlflow(uri, out_dir)
         else:
-            raise Exception("Cannot recognize storage type for " + uri +
-                            "\n'%s', '%s', '%s', and '%s' are the current available storage type." %
-                            (_GCS_PREFIX, _S3_PREFIX, _LOCAL_PREFIX, _HTTP_PREFIX))
+            raise Exception(
+                "Cannot recognize storage type for " + uri +
+                "\n'%s', '%s', '%s', '%s', '%s', '%s', and '%s' are the current available storage type."
+                % (_GCS_PREFIX, _S3_PREFIX, _LOCAL_PREFIX, _HTTP_PREFIX, _DBFS_PREFIX,
+                   _MODELS_PREFIX, _RUNS_PREFIX))
 
         logging.info("Successfully copied %s to %s", uri, out_dir)
         return out_dir
@@ -574,3 +590,9 @@ class Storage(object):  # pylint: disable=too-few-public-methods
             raise RuntimeError("Failed to unpack archive file. \
 The file format is not valid.")
         os.remove(file_path)
+
+    @staticmethod
+    def _download_mlflow(uri, out_dir: str):
+        if not uri.endswith('/'):
+            uri += '/'
+        _download_artifact_from_uri(uri, out_dir)
